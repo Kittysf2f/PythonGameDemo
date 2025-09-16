@@ -23,3 +23,15 @@ BIOME_COLORS = {
     "SNOW": (240, 240, 240),
     "MOUNTAIN": (110, 110, 110),
 }
+
+# 生物群系英文名称
+BIOME_NAMES = {
+    "DEEP_OCEAN": "Deep Ocean",
+    "OCEAN": "Ocean",
+    "BEACH": "Beach",
+    "GRASSLAND": "Grassland",
+    "FOREST": "Forest",
+    "DESERT": "Desert",
+    "SNOW": "Snow",
+    "MOUNTAIN": "Mountain",
+}
