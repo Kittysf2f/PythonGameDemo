@@ -15,12 +15,26 @@ class Map2DGenerator:
             progress_callback = lambda phase, p: None
         
         # 创建地图数据
+        # 新增：每个区块对应球面格点(row, col)
+        sphere_indices = np.zeros((self.map_size, self.map_size, 2), dtype=int)
+        center_row, center_col = center_coords
+        resolution = self.planet.resolution
+        for y in range(self.map_size):
+            for x in range(self.map_size):
+                # 2D地图中心对应球面center_coords，四周映射到球面相邻格点（简单平移，后续可改为更复杂投影）
+                d_row = y - self.map_size // 2
+                d_col = x - self.map_size // 2
+                sphere_row = (center_row + d_row) % resolution
+                sphere_col = (center_col + d_col) % resolution
+                sphere_indices[y, x] = [sphere_row, sphere_col]
+
         map_data = {
             'tiles': np.zeros((self.map_size, self.map_size), dtype=int),
             'biomes': np.zeros((self.map_size, self.map_size), dtype=int),
             'elevation': np.zeros((self.map_size, self.map_size)),
             'center_coords': center_coords,
-            'center_biome': center_biome
+            'center_biome': center_biome,
+            'sphere_indices': sphere_indices  # 新增：每个区块对应球面格点(row, col)
         }
         progress_callback("Preparing data", 0.05)
         

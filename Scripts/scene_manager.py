@@ -8,30 +8,33 @@ from config import *
 
 class SceneManager:
     def __init__(self, planet):
-        pygame.init()
+        # pygame已在main.py初始化
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Procedural Planet Generator")
         self.clock = pygame.time.Clock()
-        
+
+        # 记录当前2D地图场景名
+        self.last_map_scene_name = None
+
         # 加载状态
         self.loading_active = False
         self.loading_progress = 0.0
         self.loading_text = "Loading..."
         self._loading_thread = None
         self._pending_map_scene_name = None
-        
+
         # 场景管理
         self.current_scene = None
         self.scenes = {}
-        
+
         # 初始化3D星球场景
         self.planet_scene = Visualizer(planet=planet)
         self.planet_scene.set_scene_manager(self)
         self.scenes['planet'] = self.planet_scene
-        
+
         # 2D地图生成器
         self.map_generator = Map2DGenerator(planet)
-        
+
         # 设置初始场景
         self.switch_scene('planet')
     
@@ -40,6 +43,9 @@ class SceneManager:
         if scene_name in self.scenes:
             self.current_scene = self.scenes[scene_name]
             print(f"切换到场景: {scene_name}")
+            # 记录2D地图场景名
+            if scene_name.startswith("map_"):
+                self.last_map_scene_name = scene_name
         else:
             print(f"场景不存在: {scene_name}")
     
@@ -52,6 +58,9 @@ class SceneManager:
         self.loading_progress = 0.0
         self.loading_text = f"Generating 2D map at {coords} ({biome_name})"
         self._pending_map_scene_name = f"map_{int(coords[0])}_{int(coords[1])}"
+
+        # 记录2D地图场景名
+        self.last_map_scene_name = self._pending_map_scene_name
 
         def _progress_cb(phase, progress):
             # phase: str, progress: 0..1
@@ -83,7 +92,18 @@ class SceneManager:
         self._loading_thread.start()
     
     def handle_event(self, event):
-        """处理事件"""
+        """处理事件，包括M键切换场景"""
+        # 处理M键切换
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+            # 当前为球面场景且有2D地图，切到2D地图
+            if self.current_scene == self.planet_scene and self.last_map_scene_name:
+                self.switch_scene(self.last_map_scene_name)
+                return
+            # 当前为2D地图场景，切回球面
+            elif self.current_scene != self.planet_scene:
+                self.switch_scene('planet')
+                return
+        # 其他事件交给当前场景
         if self.current_scene:
             self.current_scene.handle_event(event)
     

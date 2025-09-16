@@ -51,28 +51,22 @@ class Visualizer:
         self._handle_mouse_motion(mouse_x, mouse_y)
     
     def handle_event(self, event):
-        """处理单个事件"""
+        """处理单个事件，M键切换交由SceneManager统一处理"""
         if event.type == pygame.MOUSEMOTION:
-            # 处理鼠标移动
             mouse_x, mouse_y = pygame.mouse.get_pos()
             self._handle_mouse_motion(mouse_x, mouse_y)
-        
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # 左键点击
+            if event.button == 1:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                
-                # 检查是否点击了开始游戏按钮
                 if self._is_button_clicked(mouse_x, mouse_y):
                     self.button_pressed = True
                     if self.selected_region is not None:
                         self._start_game()
                 else:
-                    # 检查是否点击了星球上的区域
                     if self.game_state == "selection":
                         self._handle_planet_click(mouse_x, mouse_y)
-        
         elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:  # 左键释放
+            if event.button == 1:
                 self.button_pressed = False
     
     def _handle_mouse_motion(self, mouse_x, mouse_y):
