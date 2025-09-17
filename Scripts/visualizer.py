@@ -11,6 +11,18 @@ class Visualizer:
         self.clock = pygame.time.Clock()
         self.planet = planet
         self.angle_x, self.angle_y = math.pi/2, 0
+        
+        # 瓦片选择状态
+        self.selected_tile = None  # 选中的瓦片坐标 (row, col)
+        self.selected_region = None  # 选中的区域颜色/生物群系
+        
+        # UI状态
+        self.button_hovered = False
+        self.button_pressed = False
+        
+        # 字体
+        self.font = pygame.font.Font(None, 36)
+        self.button_font = pygame.font.Font(None, 24)
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
@@ -20,6 +32,124 @@ class Visualizer:
         if keys[pygame.K_d]: self.angle_y += ROTATION_SPEED
         # 钳制旋转角度
         self.angle_x = np.clip(self.angle_x, math.pi/3, math.pi*2/3)
+        
+        # 处理鼠标移动（实时更新悬停状态）
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        self._handle_mouse_motion(mouse_x, mouse_y)
+    
+    def handle_event(self, event):
+        """处理单个事件"""
+        if event.type == pygame.MOUSEMOTION:
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            self._handle_mouse_motion(mouse_x, mouse_y)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # 左键点击
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                if self._is_button_clicked(mouse_x, mouse_y):
+                    self.button_pressed = True
+                    if self.selected_tile is not None:
+                        self._start_game()
+                else:
+                    self._handle_planet_click(mouse_x, mouse_y)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self.button_pressed = False
+    
+    def _handle_mouse_motion(self, mouse_x, mouse_y):
+        """处理鼠标移动事件"""
+        # 检查鼠标是否悬停在按钮上
+        self.button_hovered = self._is_button_clicked(mouse_x, mouse_y)
+    
+    def _is_button_clicked(self, mouse_x, mouse_y):
+        """检查鼠标是否点击了开始游戏按钮"""
+        return (BUTTON_X <= mouse_x <= BUTTON_X + BUTTON_WIDTH and
+                BUTTON_Y <= mouse_y <= BUTTON_Y + BUTTON_HEIGHT)
+    
+    def _handle_planet_click(self, mouse_x, mouse_y):
+        """处理点击星球选择区域"""
+        # 计算点击位置相对于星球中心的位置
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        radius = SCREEN_WIDTH * 0.4
+        
+        # 将屏幕坐标转换为球面坐标
+        click_x = (mouse_x - center_x) / radius
+        click_y = (mouse_y - center_y) / radius
+        
+        # 检查点击是否在星球范围内
+        distance_from_center = math.sqrt(click_x**2 + click_y**2)
+        if distance_from_center <= 1.0:
+            # 找到最接近的星球点
+            closest_tile = self._find_closest_planet_tile(click_x, click_y)
+            if closest_tile is not None:
+                self.selected_tile = closest_tile
+                self.selected_region = self.planet.colors[closest_tile[0], closest_tile[1]]
+                # 找到对应的生物群系名称
+                biome_name = self._get_biome_name(self.selected_region)
+                print(f"选择了区域: 坐标({closest_tile[0]}, {closest_tile[1]}), 生物群系: {biome_name}")
+    
+    def _find_closest_planet_tile(self, click_x, click_y):
+        """找到最接近点击位置的星球瓦片"""
+        # 计算旋转矩阵
+        rot_x = np.array([[1,0,0],[0,math.cos(self.angle_x),-math.sin(self.angle_x)],[0,math.sin(self.angle_x),math.cos(self.angle_x)]])
+        rot_y = np.array([[math.cos(self.angle_y),0,math.sin(self.angle_y)],[0,1,0],[-math.sin(self.angle_y),0,math.cos(self.angle_y)]])
+        rotation_matrix = rot_y @ rot_x
+        
+        # 旋转所有点
+        rotated_points = self.planet.points.reshape(-1, 3) @ rotation_matrix.T
+        
+        # 找到朝向我们的点
+        front_face_indices = np.where(rotated_points[:, 2] > 0)[0]
+        
+        if len(front_face_indices) == 0:
+            return None
+        
+        # 计算投影坐标
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        radius = SCREEN_WIDTH * 0.4
+        
+        min_distance = float('inf')
+        closest_tile = None
+        
+        for i in front_face_indices:
+            point = rotated_points[i]
+            x_proj = point[0] * radius + center_x
+            y_proj = point[1] * radius + center_y
+            
+            # 计算距离
+            distance = math.sqrt((x_proj - (click_x * radius + center_x))**2 + 
+                               (y_proj - (click_y * radius + center_y))**2)
+            
+            if distance < min_distance:
+                min_distance = distance
+                # 将一维索引转换回二维坐标
+                row = i // self.planet.resolution
+                col = i % self.planet.resolution
+                closest_tile = (row, col)
+        
+        return closest_tile
+    
+    def _get_biome_name(self, color):
+        """根据颜色获取生物群系名称"""
+        for biome, biome_color in BIOME_COLORS.items():
+            if np.array_equal(color, biome_color):
+                return BIOME_NAMES.get(biome, "Unknown")
+        return "Unknown"
+    
+    def _start_game(self):
+        """开始游戏，切换到场景B"""
+        if hasattr(self, 'scene_manager'):
+            # 获取生物群系名称
+            biome_name = self._get_biome_name(self.selected_region)
+            # 启动2D地图场景
+            self.scene_manager.start_2d_map(biome_name, self.selected_tile)
+        else:
+            # 如果没有场景管理器，使用原来的逻辑
+            biome_name = self._get_biome_name(self.selected_region)
+            print(f"游戏开始！初始区域: 坐标{self.selected_tile}, 生物群系: {biome_name}")
+    
+    def set_scene_manager(self, scene_manager):
+        """设置场景管理器"""
+        self.scene_manager = scene_manager
 
     def draw(self):
         self.screen.fill((10, 10, 20))
@@ -63,9 +193,71 @@ class Visualizer:
                 min(255, int(base_color[2] * intensity))
             )
 
-            # 投影并绘制一个更大的圆
+            # 投影坐标
             x_proj = int(point[0] * radius + center_x)
             y_proj = int(point[1] * radius + center_y)
-            pygame.draw.circle(self.screen, lit_color, (x_proj, y_proj), point_radius)
+            
+            # 检查是否是选中的瓦片
+            row = i // self.planet.resolution
+            col = i % self.planet.resolution
+            is_selected = (self.selected_tile is not None and 
+                          row == self.selected_tile[0] and 
+                          col == self.selected_tile[1])
+            
+            if is_selected:
+                # 选中瓦片用白色高亮显示
+                # 绘制更大的白色圆作为高亮背景
+                pygame.draw.circle(self.screen, (255, 255, 255), (x_proj, y_proj), point_radius + 3)
+                # 绘制原始颜色的圆
+                pygame.draw.circle(self.screen, lit_color, (x_proj, y_proj), point_radius)
+                # 绘制白色边框
+                pygame.draw.circle(self.screen, (255, 255, 255), (x_proj, y_proj), point_radius + 2, 3)
+            else:
+                pygame.draw.circle(self.screen, lit_color, (x_proj, y_proj), point_radius)
+
+        # 绘制UI元素
+        self._draw_ui()
 
         pygame.display.flip()
+    
+    def _draw_ui(self):
+        """绘制用户界面元素"""
+        # 绘制开始游戏按钮
+        # 基础颜色
+        if self.selected_tile is not None:
+            base_color = BUTTON_BASE_COLOR  # 绿色
+        else:
+            base_color = BUTTON_DISABLED_COLOR  # 灰色
+        
+        # 根据状态调整颜色
+        if self.button_pressed:
+            # 点击时变暗
+            button_color = BUTTON_PRESSED_COLOR
+        elif self.button_hovered and self.selected_tile is not None:
+            # 悬停时稍微变亮
+            button_color = BUTTON_HOVER_COLOR
+        else:
+            button_color = base_color
+        
+        pygame.draw.rect(self.screen, button_color, 
+                       (BUTTON_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT))
+        pygame.draw.rect(self.screen, (200, 200, 200), 
+                       (BUTTON_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT), 2)
+        
+        # 按钮文字
+        button_text = "Start Game" if self.selected_tile is not None else "Select Region"
+        text_surface = self.button_font.render(button_text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(BUTTON_X + BUTTON_WIDTH//2, 
+                                                BUTTON_Y + BUTTON_HEIGHT//2))
+        self.screen.blit(text_surface, text_rect)
+        
+        # 绘制选择提示
+        if self.selected_tile is None:
+            hint_text = "Click on planet to select starting region"
+            hint_surface = self.button_font.render(hint_text, True, (200, 200, 200))
+            self.screen.blit(hint_surface, (20, SCREEN_HEIGHT - 30))
+        else:
+            biome_name = self._get_biome_name(self.selected_region)
+            hint_text = f"Selected: {self.selected_tile} ({biome_name})"
+            hint_surface = self.button_font.render(hint_text, True, (100, 255, 100))
+            self.screen.blit(hint_surface, (20, SCREEN_HEIGHT - 30))
